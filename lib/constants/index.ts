@@ -1,0 +1,99 @@
+/**
+ * Application-wide constants
+ */
+
+export const VALIDATION_CONSTANTS = {
+  // Text validation
+  TEXT_MAX_LENGTH: 10000,
+  TEXT_MIN_LENGTH: 1,
+  
+  // Image validation
+  IMAGE_MAX_SIZE_BYTES: 10 * 1024 * 1024, // 10MB
+  IMAGE_MAX_SIZE_MB: 10,
+  
+  // Coordinate validation
+  LATITUDE_MIN: -90,
+  LATITUDE_MAX: 90,
+  LONGITUDE_MIN: -180,
+  LONGITUDE_MAX: 180,
+  
+  // Time validation
+  MAX_TIMESTAMP_AGE_DAYS: 365,
+  
+  // Score thresholds
+  SCORE_MIN: 0.0,
+  SCORE_MAX: 1.0,
+  PASS_THRESHOLD: 0.70,
+  LOW_CONFIDENCE_THRESHOLD: 0.40,
+  
+  // Spam detection thresholds
+  SPAM_SHORT_TEXT_LENGTH: 10,
+  SPAM_MAX_HASHTAGS: 10,
+  SPAM_MAX_URLS: 3,
+  SPAM_BURST_WINDOW_MS: 5 * 60 * 1000, // 5 minutes
+  SPAM_BURST_HIGH_THRESHOLD: 5,
+  SPAM_BURST_MEDIUM_THRESHOLD: 3,
+  
+  // Image duplicate detection
+  IMAGE_EXIF_DISTANCE_CLOSE_M: 100,    // Within 100m = high confidence
+  IMAGE_EXIF_DISTANCE_NEAR_M: 1000,    // Within 1km = medium confidence
+  IMAGE_EXIF_DISTANCE_ACCEPTABLE_M: 5000, // Within 5km = acceptable
+  IMAGE_DUPLICATE_PENALTY: 0.3,        // Multiply score by this if duplicate
+  
+  // Entity extraction
+  MIN_POI_WORD_LENGTH: 3,
+  TEXT_HASH_LENGTH: 100,
+  IMAGE_HASH_PREFIX_LENGTH: 50,
+  
+  // History tracking
+  MAX_SUBMISSION_HISTORY: 100,
+  
+  // Text analyzer scoring weights
+  TEXT_EXACT_POI_MATCH_SCORE: 0.5,
+  TEXT_POI_WORD_MATCH_BASE: 0.1,
+  TEXT_POI_WORD_MATCH_MAX: 0.3,
+  TEXT_NICKNAME_MATCH_SCORE: 0.3,
+  TEXT_CITY_MENTION_SCORE: 0.2,
+  TEXT_ENTITY_MATCH_BASE: 0.05,
+  TEXT_ENTITY_MATCH_MAX: 0.2,
+  TEXT_NO_MATCHES_SCORE: 0.1,
+  TEXT_COORDINATES_PENALTY: 0.7,
+  
+  // Image analyzer scoring
+  IMAGE_NO_EXIF_BASE_SCORE: 0.5,
+  IMAGE_EXIF_CLOSE_SCORE: 0.9,
+  IMAGE_EXIF_NEAR_SCORE: 0.7,
+  IMAGE_EXIF_ACCEPTABLE_SCORE: 0.5,
+  IMAGE_EXIF_FAR_SCORE: 0.2,
+  
+  // Time analyzer scoring
+  TIME_NO_TIMESTAMP_SCORE: 0.5,
+  TIME_FUTURE_SCORE: 0.1,
+  TIME_OLD_SCORE: 0.3,
+} as const;
+
+export const ERROR_CODES = {
+  INVALID_COORDS: 'INVALID_COORDS',
+  INVALID_LAT: 'INVALID_LAT',
+  INVALID_LNG: 'INVALID_LNG',
+  MISSING_TEXT: 'MISSING_TEXT',
+  TEXT_TOO_LONG: 'TEXT_TOO_LONG',
+  INVALID_TIMESTAMP: 'INVALID_TIMESTAMP',
+  IMAGE_TOO_LARGE: 'IMAGE_TOO_LARGE',
+  MISSING_POI_NAME: 'MISSING_POI_NAME',
+  MISSING_CITY: 'MISSING_CITY',
+  INVALID_LOCATION_TYPE: 'INVALID_LOCATION_TYPE',
+  UNKNOWN_ERROR: 'UNKNOWN_ERROR',
+} as const;
+
+/**
+ * HTTP status codes for different error types
+ */
+export const HTTP_STATUS = {
+  OK: 200,
+  BAD_REQUEST: 400,
+  INTERNAL_SERVER_ERROR: 500,
+} as const;
+
+export type ErrorCode = typeof ERROR_CODES[keyof typeof ERROR_CODES];
+

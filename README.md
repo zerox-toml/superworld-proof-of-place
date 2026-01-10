@@ -1,5 +1,13 @@
 # SuperWorld - Proof-of-Place Validation System
 
+## Overview
+
+This is a **Proof-of-Place validation demo** for SuperWorld's proposed Bittensor subnet. The system implements geo-consistency scoring for location-tagged social media posts, aligning with SuperWorld's Executive Summary for a DePIN subnet that enriches social content with real-time geospatial intelligence.
+
+**Core Concept**: Verify that a social media post (text + image) plausibly belongs at its claimed location, using multi-modal validation (text analysis, image evidence, time plausibility, anti-gaming).
+
+**Subnet Goal**: Enable real-time validation of social posts from X, Reddit, YouTube (via Subnet 13 Data Universe) to create a verified geospatial intelligence layer for the SuperWorld app.
+
 ## Quick Start
 
 ```bash

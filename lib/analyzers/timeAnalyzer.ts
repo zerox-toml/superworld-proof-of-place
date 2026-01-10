@@ -1,8 +1,21 @@
 import type { TimeAnalysisResult, LocationInput } from '@/types';
+import { VALIDATION_CONSTANTS } from '@/lib/constants';
 
 /**
- * Analyzes timestamp plausibility
+ * Analyzes timestamp plausibility for geo-consistency validation
+ * 
+ * This analyzer validates whether a post's timestamp makes sense for:
+ * - The claimed location's venue type
+ * - Typical event hours for that venue type
+ * - Time constraints (not future, not too old)
+ * 
  * Weight: 20% of total score
+ * 
+ * Validation strategy:
+ * - Future timestamps: Low score (0.1) - impossible
+ * - Very old timestamps (>1 year): Low score (0.3) - suspicious
+ * - Venue-type specific hours: Scores based on typical operating/event hours
+ * - No timestamp: Neutral score (0.5) - not penalized
  */
 export class TimeAnalyzer {
   /**
@@ -33,13 +46,17 @@ export class TimeAnalyzer {
       };
     }
 
-    // Check if timestamp is too old (more than 1 year)
-    const oneYearAgo = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
-    if (postTime < oneYearAgo) {
+    // Check if timestamp is too old (exceeds maximum age threshold)
+    const maxAgeDate = new Date(now);
+    maxAgeDate.setFullYear(now.getFullYear() - 1);
+    maxAgeDate.setMonth(now.getMonth());
+    maxAgeDate.setDate(now.getDate());
+
+    if (postTime < maxAgeDate) {
       return {
         score: 0.3,
         isPlausible: false,
-        reason: 'Timestamp is more than 1 year old',
+        reason: `Timestamp is more than ${VALIDATION_CONSTANTS.MAX_TIMESTAMP_AGE_DAYS} days old (likely stale or historical content)`,
       };
     }
 

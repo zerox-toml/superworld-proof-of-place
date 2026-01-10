@@ -8,30 +8,42 @@ import { TextAnalyzer } from '../analyzers/textAnalyzer';
 import { ImageAnalyzer } from '../analyzers/imageAnalyzer';
 import { TimeAnalyzer } from '../analyzers/timeAnalyzer';
 import { SpamAnalyzer } from '../analyzers/spamAnalyzer';
+import { VALIDATION_CONSTANTS } from '@/lib/constants';
 
 /**
  * Main scoring engine for Proof-of-Place validation
  * 
+ * Implements a weighted heuristic model for geo-consistency scoring.
+ * This model is transparent and explainable, suitable for validator auditing.
+ * 
  * Scoring Model:
- * - Text-Place Consistency: 40%
- * - Image Evidence: 30%
- * - Time Plausibility: 20%
- * - Anti-Spam: 10% (penalty)
+ * - Text-Place Consistency: 40% (strongest signal - direct evidence)
+ * - Image Evidence: 30% (visual proof when available)
+ * - Time Plausibility: 20% (contextual validation)
+ * - Anti-Spam: 10% (penalty factor, not positive signal)
+ * 
+ * Final Score = (Text × 0.4) + (Image × 0.3) + (Time × 0.2)
+ * Final Score = Base Score × (1 - Spam Risk × 0.1)
  */
 export class ScoringEngine {
-  // Scoring weights
+  /**
+   * Scoring weights - these sum to 0.9 (spam is a penalty, not additive)
+   */
   private static readonly WEIGHTS = {
-    TEXT_PLACE: 0.4,
-    IMAGE: 0.3,
-    TIME: 0.2,
-    SPAM_PENALTY: 0.1, // This is a penalty, not a positive signal
+    TEXT_PLACE: 0.4 as const,
+    IMAGE: 0.3 as const,
+    TIME: 0.2 as const,
+    SPAM_PENALTY: 0.1 as const, // Applied as penalty multiplier
   };
 
-  // Classification thresholds
+  /**
+   * Classification thresholds
+   * These define "good enough" validation criteria for the subnet
+   */
   private static readonly THRESHOLDS = {
-    PASS: 0.70,
-    LOW_CONFIDENCE: 0.40,
-  };
+    PASS: VALIDATION_CONSTANTS.PASS_THRESHOLD,
+    LOW_CONFIDENCE: VALIDATION_CONSTANTS.LOW_CONFIDENCE_THRESHOLD,
+  } as const;
 
   /**
    * Validates a location-tagged post and returns scoring breakdown
@@ -80,10 +92,21 @@ export class ScoringEngine {
       }
     );
 
+    // Clamp score to valid range [0.0, 1.0]
+    const clampedScore = Math.max(
+      VALIDATION_CONSTANTS.SCORE_MIN,
+      Math.min(VALIDATION_CONSTANTS.SCORE_MAX, finalScore)
+    );
+
     return {
-      score: Math.max(0, Math.min(1, finalScore)), // Clamp to 0-1
+      score: Number(clampedScore.toFixed(4)), // Round to 4 decimal places for consistency
       classification,
-      signals,
+      signals: {
+        text_place_match: Number(signals.text_place_match.toFixed(4)),
+        image_landmark: Number(signals.image_landmark.toFixed(4)),
+        time_plausibility: Number(signals.time_plausibility.toFixed(4)),
+        spam_risk: Number(signals.spam_risk.toFixed(4)),
+      },
       explanation,
     };
   }

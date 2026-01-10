@@ -34,7 +34,6 @@ export default function ValidationForm({ onSubmit, loading }: ValidationFormProp
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {/* Text Input */}
       <div>
         <label htmlFor="text" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
           Post Text <span className="text-red-500">*</span>

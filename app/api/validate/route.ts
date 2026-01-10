@@ -1,91 +1,154 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ScoringEngine } from '@/lib/scoring/scoringEngine';
-import { handleValidationError, validateText, validateCoordinates, validateTimestamp } from '@/lib/utils/errorHandler';
-import type { ValidationRequest, ValidationResponse } from '@/types';
+import {
+  handleValidationError,
+  validateText,
+  validateCoordinates,
+  validateTimestamp,
+  validateImageSize,
+  ValidationError,
+} from '@/lib/utils/errorHandler';
+import { ERROR_CODES, VALIDATION_CONSTANTS } from '@/lib/constants';
+import type { ValidationRequest, ValidationResponse, LocationInput } from '@/types';
 
 /**
  * POST /api/validate
- * Validates a location-tagged social media post
+ * 
+ * Validates a location-tagged social media post for geo-consistency.
+ * 
+ * @param request - Next.js request object containing multipart/form-data
+ * @returns ValidationResponse with score, classification, and explanation
+ * 
+ * Request format (multipart/form-data):
+ * - text: string (required) - Post content
+ * - image: File (optional) - Image file
+ * - locationType: "coordinates" | "poi" (required)
+ * - lat: number (if locationType === "coordinates")
+ * - lng: number (if locationType === "coordinates")
+ * - poiName: string (if locationType === "poi")
+ * - city: string (if locationType === "poi")
+ * - timestamp: string (optional) - ISO 8601 format
  */
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse<ValidationResponse | { error: string; code?: string }>> {
   try {
     const formData = await request.formData();
-    
-    // Extract form data
-    const text = formData.get('text') as string;
-    const image = formData.get('image') as File | null;
-    const locationType = formData.get('locationType') as string;
-    const timestamp = formData.get('timestamp') as string | null;
 
-    // Validate text
-    validateText(text);
+    // Extract and validate text content
+    const textValue = formData.get('text');
+    validateText(textValue);
+    const text = (textValue as string).trim();
 
-    // Parse and validate location
-    let location;
-    if (locationType === 'coordinates') {
-      const lat = parseFloat(formData.get('lat') as string);
-      const lng = parseFloat(formData.get('lng') as string);
-      
-      validateCoordinates(lat, lng);
-      location = { type: 'coordinates' as const, lat, lng };
-    } else if (locationType === 'poi') {
-      const name = formData.get('poiName') as string;
-      const city = formData.get('city') as string;
-      
-      if (!name || name.trim().length === 0) {
-        return NextResponse.json(
-          { error: 'POI name is required' },
-          { status: 400 }
-        );
-      }
-      
-      if (!city || city.trim().length === 0) {
-        return NextResponse.json(
-          { error: 'City is required' },
-          { status: 400 }
-        );
-      }
-      
-      location = { type: 'poi' as const, name: name.trim(), city: city.trim() };
-    } else {
-      return NextResponse.json(
-        { error: 'Invalid location type. Must be "coordinates" or "poi"' },
-        { status: 400 }
+    // Extract image if provided
+    const imageFile = formData.get('image');
+    const image = imageFile instanceof File ? imageFile : null;
+
+    // Extract location type and validate
+    const locationType = formData.get('locationType');
+    if (typeof locationType !== 'string') {
+      throw new ValidationError(
+        'Location type is required',
+        ERROR_CODES.INVALID_LOCATION_TYPE
       );
     }
 
-    // Validate timestamp if provided
+    // Parse location based on type
+    let location: LocationInput;
+    if (locationType === 'coordinates') {
+      const latStr = formData.get('lat');
+      const lngStr = formData.get('lng');
+
+      if (typeof latStr !== 'string' || typeof lngStr !== 'string') {
+        throw new ValidationError(
+          'Latitude and longitude are required for coordinate locations',
+          ERROR_CODES.INVALID_COORDS
+        );
+      }
+
+      const lat = parseFloat(latStr);
+      const lng = parseFloat(lngStr);
+      validateCoordinates(lat, lng);
+
+      location = { type: 'coordinates', lat, lng };
+    } else if (locationType === 'poi') {
+      const nameValue = formData.get('poiName');
+      const cityValue = formData.get('city');
+
+      if (typeof nameValue !== 'string' || nameValue.trim().length === 0) {
+        throw new ValidationError(
+          'POI name is required',
+          ERROR_CODES.MISSING_POI_NAME
+        );
+      }
+
+      if (typeof cityValue !== 'string' || cityValue.trim().length === 0) {
+        throw new ValidationError(
+          'City is required for POI locations',
+          ERROR_CODES.MISSING_CITY
+        );
+      }
+
+      location = {
+        type: 'poi',
+        name: nameValue.trim(),
+        city: cityValue.trim(),
+      };
+    } else {
+      throw new ValidationError(
+        `Invalid location type. Must be "coordinates" or "poi", got: ${locationType}`,
+        ERROR_CODES.INVALID_LOCATION_TYPE
+      );
+    }
+
+    // Extract and validate timestamp
+    const timestampValue = formData.get('timestamp');
+    const timestamp = typeof timestampValue === 'string' ? timestampValue.trim() : null;
     const finalTimestamp = timestamp || new Date().toISOString();
+
     if (timestamp) {
       validateTimestamp(timestamp);
     }
 
     // Validate image size if provided
-    if (image && image.size > 10 * 1024 * 1024) { // 10MB limit
-      return NextResponse.json(
-        { error: 'Image size exceeds 10MB limit' },
-        { status: 400 }
-      );
+    if (image) {
+      validateImageSize(image.size);
     }
 
     // Build validation request
     const validationRequest: ValidationRequest = {
-      text: text.trim(),
+      text,
       image: image || undefined,
       location,
       timestamp: finalTimestamp,
     };
 
-    // Run validation
-    const result: ValidationResponse = await ScoringEngine.validate(validationRequest);
+    // Run validation through scoring engine
+    const result = await ScoringEngine.validate(validationRequest);
 
-    return NextResponse.json(result);
+    return NextResponse.json(result, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
   } catch (error) {
-    console.error('Validation error:', error);
-    const { error: errorMessage, statusCode } = handleValidationError(error);
+    // Log error for debugging (in production, use proper logging service)
+    console.error('[Validation API] Error:', error instanceof Error ? error.message : 'Unknown error', {
+      timestamp: new Date().toISOString(),
+      error: error instanceof ValidationError ? error.code : 'UNKNOWN',
+    });
+
+    const errorResponse = handleValidationError(error);
     return NextResponse.json(
-      { error: errorMessage },
-      { status: statusCode }
+      {
+        error: errorResponse.error,
+        code: errorResponse.code,
+      },
+      {
+        status: errorResponse.statusCode,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      }
     );
   }
 }

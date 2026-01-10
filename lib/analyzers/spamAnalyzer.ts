@@ -1,12 +1,27 @@
 import type { SpamAnalysisResult } from '@/types';
+import { VALIDATION_CONSTANTS } from '@/lib/constants';
 
 /**
- * Detects spam and gaming attempts
- * Weight: 10% penalty on total score
+ * Detects spam and gaming attempts in location-tagged posts
+ * 
+ * This analyzer implements multiple detection mechanisms to identify
+ * gaming patterns that could compromise the subnet's integrity.
+ * 
+ * Weight: 10% penalty on total score (applied as multiplier reduction)
+ * 
+ * Detection mechanisms:
+ * - Duplicate text detection
+ * - Short text spam
+ * - Excessive hashtags
+ * - URL spam
+ * - Burst submission patterns
+ * - Copy-paste patterns
  */
 export class SpamAnalyzer {
+  // In-memory storage for demo purposes
+  // In production, this would use a distributed cache/database
   private static submissionHistory: Map<string, SubmissionRecord[]> = new Map();
-  private static textHashes: Map<string, number> = new Map(); // text hash -> count
+  private static textHashes: Map<string, number> = new Map(); // text hash -> submission count
 
   /**
    * Analyzes content for spam/gaming patterns
@@ -28,23 +43,25 @@ export class SpamAnalyzer {
     }
 
     // Check for very short text (potential spam)
-    if (text.length < 10) {
+    if (text.length < VALIDATION_CONSTANTS.SPAM_SHORT_TEXT_LENGTH) {
       risk += 0.2;
-      reasons.push('Text is very short');
+      reasons.push(`Text is very short (${text.length} characters, minimum ${VALIDATION_CONSTANTS.SPAM_SHORT_TEXT_LENGTH} expected)`);
     }
 
     // Check for excessive hashtags (spam indicator)
-    const hashtagCount = (text.match(/#\w+/g) || []).length;
-    if (hashtagCount > 10) {
+    const hashtagMatches = text.match(/#\w+/g);
+    const hashtagCount = hashtagMatches?.length || 0;
+    if (hashtagCount > VALIDATION_CONSTANTS.SPAM_MAX_HASHTAGS) {
       risk += 0.2;
-      reasons.push('Excessive hashtags detected');
+      reasons.push(`Excessive hashtags detected (${hashtagCount}, maximum ${VALIDATION_CONSTANTS.SPAM_MAX_HASHTAGS} allowed)`);
     }
 
     // Check for URL spam
-    const urlCount = (text.match(/https?:\/\/\S+/g) || []).length;
-    if (urlCount > 3) {
+    const urlMatches = text.match(/https?:\/\/\S+/g);
+    const urlCount = urlMatches?.length || 0;
+    if (urlCount > VALIDATION_CONSTANTS.SPAM_MAX_URLS) {
       risk += 0.3;
-      reasons.push('Multiple URLs detected');
+      reasons.push(`Multiple URLs detected (${urlCount}, maximum ${VALIDATION_CONSTANTS.SPAM_MAX_URLS} allowed)`);
     }
 
     // Check for burst submissions from same user
@@ -76,16 +93,26 @@ export class SpamAnalyzer {
   }
 
   /**
-   * Hashes text for duplicate detection
+   * Creates a normalized hash of text for duplicate detection
+   * 
+   * Note: This is a simplified hash for demo purposes.
+   * In production, use proper cryptographic hashing (e.g., SHA-256)
+   * or semantic similarity matching for near-duplicate detection.
    */
   private static hashText(text: string): string {
-    // Simple hash - in production use proper hashing
-    const normalized = text.toLowerCase().trim().replace(/\s+/g, ' ');
-    return normalized.substring(0, 100); // Use first 100 chars as hash
+    const normalized = text
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, ' ') // Normalize whitespace
+      .replace(/[^\w\s]/g, ''); // Remove punctuation for better matching
+    
+    // Use prefix as simple hash (production should use proper hash function)
+    return normalized.substring(0, VALIDATION_CONSTANTS.TEXT_HASH_LENGTH);
   }
 
   /**
    * Checks for burst submissions (many submissions in short time)
+   * This detects potential automated spam attacks
    */
   private static checkBurstSubmissions(
     userId: string,
@@ -96,16 +123,18 @@ export class SpamAnalyzer {
     const history = this.submissionHistory.get(userId) || [];
     const submissionTime = new Date(timestamp);
     
-    // Check submissions in last 5 minutes
-    const fiveMinutesAgo = new Date(submissionTime.getTime() - 5 * 60 * 1000);
+    // Check submissions within the burst detection window
+    const windowStart = new Date(submissionTime.getTime() - VALIDATION_CONSTANTS.SPAM_BURST_WINDOW_MS);
     const recentSubmissions = history.filter(
-      record => new Date(record.timestamp) > fiveMinutesAgo
+      record => new Date(record.timestamp) > windowStart
     );
 
-    if (recentSubmissions.length >= 5) {
-      return 0.5; // High risk
-    } else if (recentSubmissions.length >= 3) {
-      return 0.3; // Medium risk
+    const recentCount = recentSubmissions.length;
+
+    if (recentCount >= VALIDATION_CONSTANTS.SPAM_BURST_HIGH_THRESHOLD) {
+      return 0.5; // High risk - likely automated spam
+    } else if (recentCount >= VALIDATION_CONSTANTS.SPAM_BURST_MEDIUM_THRESHOLD) {
+      return 0.3; // Medium risk - suspicious pattern
     }
 
     return 0;
@@ -165,9 +194,11 @@ export class SpamAnalyzer {
         textHash,
       });
       
-      // Keep only last 100 submissions per user
-      if (history.length > 100) {
-        history.shift();
+      // Keep only recent submission history to prevent unbounded growth
+      const maxHistory = VALIDATION_CONSTANTS.MAX_SUBMISSION_HISTORY;
+      if (history.length > maxHistory) {
+        // Remove oldest entries (FIFO)
+        history.splice(0, history.length - maxHistory);
       }
       
       this.submissionHistory.set(userId, history);

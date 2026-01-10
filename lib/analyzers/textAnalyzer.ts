@@ -1,8 +1,23 @@
 import type { TextAnalysisResult, LocationInput } from '@/types';
+import { VALIDATION_CONSTANTS } from '@/lib/constants';
 
 /**
  * Analyzes text content for location consistency
- * Weight: 40% of total score
+ * 
+ * This analyzer extracts location-related entities from text and matches them
+ * against the claimed location to compute a geo-consistency score.
+ * 
+ * Weight: 40% of total score (strongest signal - direct evidence)
+ * 
+ * Matching strategies:
+ * - Exact POI name match: Strongest signal
+ * - POI word matches: Individual words from venue name
+ * - Nickname resolution: Common abbreviations (MSG → Madison Square Garden)
+ * - City mention: Validates broader location context
+ * - Entity extraction: Venue keywords and location indicators
+ * 
+ * Penalties:
+ * - Coordinates without POI: Reduced max score (less context)
  */
 export class TextAnalyzer {
   /**
@@ -73,10 +88,11 @@ export class TextAnalyzer {
         matches.push(`exact_poi:${poiName}`);
       }
 
-      // Check for POI name parts
+      // Check for POI name parts (individual words)
       const poiWords = poiName.split(/\s+/);
       poiWords.forEach(word => {
-        if (word.length > 3 && text.includes(word)) {
+        // Only consider words longer than minimum length to avoid false matches
+        if (word.length > VALIDATION_CONSTANTS.MIN_POI_WORD_LENGTH && text.includes(word)) {
           matches.push(`poi_word:${word}`);
         }
       });
@@ -134,46 +150,56 @@ export class TextAnalyzer {
   /**
    * Calculates score based on matches
    */
+  /**
+   * Calculates geo-consistency score based on matches found
+   * 
+   * Scoring is additive with maximum caps to prevent over-scoring.
+   * Higher match types (exact POI) are weighted more heavily than
+   * partial matches (city mentions, entities).
+   */
   private static calculateScore(
     matches: string[],
     location: LocationInput
   ): number {
     if (matches.length === 0) {
-      return 0.1; // No matches = very low score
+      return VALIDATION_CONSTANTS.TEXT_NO_MATCHES_SCORE; // No matches = very low score
     }
 
     let score = 0.0;
 
-    // Exact POI match is strongest signal
+    // Exact POI match is strongest signal (most reliable evidence)
     if (matches.some(m => m.startsWith('exact_poi:'))) {
-      score += 0.5;
+      score += VALIDATION_CONSTANTS.TEXT_EXACT_POI_MATCH_SCORE;
     }
 
-    // POI word matches
+    // POI word matches (partial venue name matches)
     const poiWordMatches = matches.filter(m => m.startsWith('poi_word:')).length;
-    score += Math.min(0.3, poiWordMatches * 0.1);
+    const poiWordScore = poiWordMatches * VALIDATION_CONSTANTS.TEXT_POI_WORD_MATCH_BASE;
+    score += Math.min(VALIDATION_CONSTANTS.TEXT_POI_WORD_MATCH_MAX, poiWordScore);
 
-    // Nickname matches
+    // Nickname matches (common abbreviations)
     if (matches.some(m => m.startsWith('nickname:'))) {
-      score += 0.3;
+      score += VALIDATION_CONSTANTS.TEXT_NICKNAME_MATCH_SCORE;
     }
 
-    // City mention
+    // City mention (broader location context)
     if (matches.some(m => m.startsWith('city:'))) {
-      score += 0.2;
+      score += VALIDATION_CONSTANTS.TEXT_CITY_MENTION_SCORE;
     }
 
-    // Entity matches
+    // Entity matches (venue keywords, location indicators)
     const entityMatches = matches.filter(m => m.startsWith('entity:')).length;
-    score += Math.min(0.2, entityMatches * 0.05);
+    const entityScore = entityMatches * VALIDATION_CONSTANTS.TEXT_ENTITY_MATCH_BASE;
+    score += Math.min(VALIDATION_CONSTANTS.TEXT_ENTITY_MATCH_MAX, entityScore);
 
-    // For coordinates without POI, lower the max score
+    // Penalty for coordinates without POI context
+    // Less context available means lower maximum achievable score
     if (location.type === 'coordinates') {
-      score *= 0.7; // Penalty for lack of POI context
+      score *= VALIDATION_CONSTANTS.TEXT_COORDINATES_PENALTY;
     }
 
-    // Cap at 1.0
-    return Math.min(1.0, score);
+    // Clamp to valid score range [0.0, 1.0]
+    return Math.min(VALIDATION_CONSTANTS.SCORE_MAX, Math.max(VALIDATION_CONSTANTS.SCORE_MIN, score));
   }
 }
 
