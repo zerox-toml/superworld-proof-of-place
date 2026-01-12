@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import ValidationForm from '@/components/ValidationForm';
 import ResultsDisplay from '@/components/ResultsDisplay';
+import ScoringExplanation from '@/components/ScoringExplanation';
 import type { ValidationResponse } from '@/types';
 
 export default function Home() {
@@ -49,6 +50,11 @@ export default function Home() {
           <p className="text-sm text-gray-500 dark:text-gray-400">
             Validate location-tagged social media posts with geo-consistency scoring
           </p>
+        </div>
+
+        {/* Scoring Explanation */}
+        <div className="mb-6">
+          <ScoringExplanation />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
